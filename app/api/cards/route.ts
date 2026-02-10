@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { query } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,30 +9,21 @@ export async function GET(request: Request) {
     const topicId = searchParams.get('topicId');
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
-    
-    let query = supabase
-      .from('cards')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-    
+
+    let sql = 'SELECT * FROM cards';
+    const params: unknown[] = [];
+
     if (topicId) {
-      query = query.eq('topic_id', parseInt(topicId));
+      sql += ' WHERE topic_id = $1';
+      params.push(parseInt(topicId));
     }
-    
-    const { data, error } = await query;
-    
-    if (error) {
-      throw error;
-    }
-    
-    return NextResponse.json({ cards: data });
-    
+
+    sql += ' ORDER BY created_at DESC LIMIT $' + (params.length + 1) + ' OFFSET $' + (params.length + 2);
+    params.push(limit, offset);
+
+    const cards = await query(sql, params);
+    return NextResponse.json({ cards });
   } catch (error) {
-    console.error('Error fetching cards:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch cards', details: String(error) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }

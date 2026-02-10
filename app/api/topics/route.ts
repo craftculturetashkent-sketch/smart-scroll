@@ -1,26 +1,13 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { query } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
-      .from('topics')
-      .select('*')
-      .order('id', { ascending: true });
-    
-    if (error) {
-      throw error;
-    }
-    
-    return NextResponse.json({ topics: data });
-    
+    const topics = await query('SELECT * FROM topics ORDER BY id');
+    return NextResponse.json({ topics });
   } catch (error) {
-    console.error('Error fetching topics:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch topics', details: String(error) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
