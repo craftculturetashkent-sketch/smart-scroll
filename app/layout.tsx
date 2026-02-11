@@ -2,21 +2,14 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Smart Scroll - Your Content Aggregator',
-  description: 'Swipeable content cards from Telegram, RSS, and Reddit',
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=1',
+  title: 'Smart Scroll',
+  description: 'Your personal content feed',
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="antialiased bg-black text-white">
-        {children}
-      </body>
+    <html lang="en" className="dark">
+      <body className="antialiased min-h-screen">{children}</body>
     </html>
   );
 }
