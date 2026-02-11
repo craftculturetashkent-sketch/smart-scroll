@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Settings, RefreshCw, Loader2 } from 'lucide-react';
 import type { Topic, Card } from '@/lib/db-types';
 import { CardItem } from '@/components/CardItem';
 import { ArticleReader } from '@/components/ArticleReader';
 import { SettingsPanel } from '@/components/SettingsPanel';
+
+const PAGE_SIZE = 20;
 
 export default function Home() {
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -14,43 +16,77 @@ export default function Home() {
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const observerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch('/api/topics').then(r => r.json()).then(d => setTopics(d.topics || []));
   }, []);
 
-  const fetchCards = useCallback(async () => {
-    setLoading(true);
-    const url = selectedTopic ? `/api/cards?topicId=${selectedTopic}` : '/api/cards';
-    const data = await fetch(url).then(r => r.json());
-    setCards(data.cards || []);
+  const fetchCards = useCallback(async (offset = 0, append = false) => {
+    if (!append) setLoading(true);
+    else setLoadingMore(true);
+
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
+    if (selectedTopic) params.set('topicId', String(selectedTopic));
+
+    const data = await fetch(`/api/cards?${params}`).then(r => r.json());
+    const newCards = data.cards || [];
+
+    if (append) {
+      setCards(prev => [...prev, ...newCards]);
+    } else {
+      setCards(newCards);
+    }
+    setHasMore(newCards.length >= PAGE_SIZE);
     setLoading(false);
+    setLoadingMore(false);
   }, [selectedTopic]);
 
+  // Initial load + topic change
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const url = selectedTopic ? `/api/cards?topicId=${selectedTopic}` : '/api/cards';
-      const data = await fetch(url).then(r => r.json());
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: '0' });
+      if (selectedTopic) params.set('topicId', String(selectedTopic));
+      const data = await fetch(`/api/cards?${params}`).then(r => r.json());
       if (!cancelled) {
         setCards(data.cards || []);
+        setHasMore((data.cards || []).length >= PAGE_SIZE);
         setLoading(false);
       }
     })();
     return () => { cancelled = true; };
   }, [selectedTopic]);
 
+  // Infinite scroll observer
+  useEffect(() => {
+    const el = observerRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading) {
+          fetchCards(cards.length, true);
+        }
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loading, cards.length, fetchCards]);
+
   async function handleRefresh() {
     setRefreshing(true);
     await fetch('/api/cron').catch(() => {});
-    await fetchCards();
+    await fetchCards(0, false);
     setRefreshing(false);
   }
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
       <header className="sticky top-0 z-40 bg-zinc-950/95 backdrop-blur-md border-b border-zinc-800/50">
         <div className="max-w-2xl mx-auto px-4">
           <div className="flex items-center justify-between py-3">
@@ -74,7 +110,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Topic pills */}
           <div className="flex gap-1.5 overflow-x-auto pb-3 scrollbar-hide -mx-4 px-4">
             <button
               onClick={() => setSelectedTopic(null)}
@@ -103,7 +138,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Feed */}
       <main className="max-w-2xl mx-auto px-4 py-4">
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -125,18 +159,23 @@ export default function Home() {
             {cards.map((card) => (
               <CardItem key={card.id} card={card} onClick={() => setSelectedCard(card)} />
             ))}
+
+            {/* Infinite scroll trigger */}
+            <div ref={observerRef} className="py-8 flex justify-center">
+              {loadingMore && <Loader2 className="animate-spin text-zinc-600" size={20} />}
+              {!hasMore && cards.length > 0 && (
+                <p className="text-zinc-700 text-sm">You&apos;re all caught up ✓</p>
+              )}
+            </div>
           </div>
         )}
       </main>
 
-      {/* Article reader overlay */}
       {selectedCard && (
         <ArticleReader card={selectedCard} onClose={() => setSelectedCard(null)} />
       )}
-
-      {/* Settings panel */}
       {showSettings && (
-        <SettingsPanel onClose={() => { setShowSettings(false); fetchCards(); }} />
+        <SettingsPanel onClose={() => { setShowSettings(false); fetchCards(0, false); }} />
       )}
     </div>
   );
