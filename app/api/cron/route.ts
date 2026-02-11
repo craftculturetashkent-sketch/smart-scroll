@@ -17,8 +17,11 @@ interface Topic {
 
 export async function GET(request: Request) {
   try {
+    // Auth check - allow internal refresh calls (from browser) without secret
     const authHeader = request.headers.get('authorization');
-    if (process.env.NODE_ENV === 'production' && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    const referer = request.headers.get('referer');
+    const isInternalCall = referer?.includes(request.headers.get('host') || '');
+    if (process.env.NODE_ENV === 'production' && !isInternalCall && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
